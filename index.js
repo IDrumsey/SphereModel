@@ -5,10 +5,11 @@
   let runAnimation;
   const frameRate = 10;
   let trackingMouse;
-  const skewVal = 10;
-  const numNodes = 16;
-  const outerCircles = 6;
-  const defaultNodeRadius = 2.5;
+  const numNodes = 30;
+  const outerCircles = 5;
+  const defaultNodeRadius = 2;
+  const minNodeRadius = .5;
+  const outerCircleRadius = 200;
 
   canvas = document.querySelector("canvas");
   canvasCTX = canvas.getContext("2d");
@@ -19,10 +20,11 @@
   let modelY = canvas.height/2;
 
     class Circle {
-      constructor(x, y, radius){
+      constructor(x, y, radius, angle){
         this.x = x;
       this.y = y;
       this.radius = radius;
+      this.angle = angle;
       }
     }
   
@@ -40,7 +42,7 @@
   
       buildOuterCircles(){
         for(let i = 0; i < this.numOuterCircles; i++){
-          let tempOuterCircle = new outerCircle(numNodes, 100, (180 / this.numOuterCircles) * i);
+          let tempOuterCircle = new outerCircle(numNodes, outerCircleRadius, (180 / this.numOuterCircles) * i);
           this.outerCircles.push(tempOuterCircle);
         }
       }
@@ -60,26 +62,50 @@
         this.rotationAngle = rotationAngle;
         this.buildNodes();
         this.drawNodes();
-        this.color = "#fff";
+        this.color = "#a1d1c9";
+        //this.drawLines();
       }
   
       buildNodes(){
         for(let i = 0; i < this.numNodes; i++){
           let angle = (360 / this.numNodes) * i;
-          console.log((1 - Math.sin(convertDegToRad(this.rotationAngle) * (getX((360 / this.numNodes) * i, this.radius, this.rotationAngle) / this.radius))))
-          let nodeRadius = this.rotationAngle < 90 ? defaultNodeRadius * (1 - Math.sin(convertDegToRad(this.rotationAngle) * (getX((360 / this.numNodes) * i, this.radius, this.rotationAngle) / this.radius))) : defaultNodeRadius * (defaultNodeRadius - (1 - Math.sin(convertDegToRad(this.rotationAngle) * (getX((360 / this.numNodes) * i, this.radius, this.rotationAngle) / this.radius))))
-          if(this.rotationAngle > 90){
-            nodeRadius
-          }
-          console.log("Rotation Angle : ", this.rotationAngle,"Node angle : ", angle,  "  Node Radius : ", nodeRadius);
-          let tempNode = new Circle(modelX + getX((360 / this.numNodes) * i, this.radius, this.rotationAngle), modelY + getY((360 / this.numNodes) * i, this.radius, this.rotationAngle), nodeRadius);
+          let scalarFactor = Math.sin(convertDegToRad(this.rotationAngle));
+          let innerDistance = -Math.cos(convertDegToRad(angle));
+          let nodeRadius = defaultNodeRadius + (innerDistance * (scalarFactor * (defaultNodeRadius - minNodeRadius)));
+          let tempNode = new Circle(modelX + getX(angle, this.radius, this.rotationAngle), modelY + getY(angle, this.radius, this.rotationAngle), nodeRadius, angle);
           this.nodes.push(tempNode);
+        }
+      }
+
+      changeRotationAngle(newRotationAngle){
+        for(let i = 0; i < this.nodes.length; i++){
+          let angle = this.nodes[i].angle;
+          let scalarFactor = Math.sin(convertDegToRad(newRotationAngle));
+          let innerDistance = -Math.cos(convertDegToRad(angle));
+          let nodeRadius = defaultNodeRadius + (innerDistance * (scalarFactor * (defaultNodeRadius - minNodeRadius)));
+          this.nodes[i].x = modelX + getX(angle, this.radius, this.rotationAngle);
+          this.nodes[i].y = modelY + getY(angle, this.radius, this.rotationAngle);
+          this.nodes[i].radius = nodeRadius;
         }
       }
   
       drawNodes(){
         for(let i = 0; i < this.numNodes; i++){
           drawCircle(this.nodes[i],canvasCTX, this.color);
+        }
+      }
+
+      drawLines(){
+        for(let i = 0; i < this.nodes.length; i++){
+          for(let j = 0; j < this.nodes.length; j++){
+            if(i != j && j % 2 == 0){
+              canvasCTX.beginPath();
+              canvasCTX.strokeStyle = "#fff";
+              canvasCTX.moveTo(this.nodes[i].x, this.nodes[i].y);
+              canvasCTX.lineTo(this.nodes[j].x, this.nodes[j].y);
+              canvasCTX.stroke();
+            }
+          }
         }
       }
     }
@@ -90,10 +116,22 @@
   //Initialize Circles before this event handler
   window.onresize = dimensionChange;
 
+  let trackOriginalMouseMovement = 1;
+  let originalMouseX;
+  let originalMouseY;
+  document.addEventListener("mousemove", (e) => {
+    if(trackOriginalMouseMovement == 1){
+      originalMouseX = e.clientX;
+    originalMouseY = e.clientY;
+    }
+  })
+
   document.addEventListener("mousedown", () => {
+    trackOriginalMouseMovement = 0;
     document.addEventListener("mousemove", logMouseCoords);
   });
   document.addEventListener("mouseup", () => {
+    trackOriginalMouseMovement = 1;
     document.removeEventListener("mousemove", logMouseCoords);
   });
 
@@ -101,23 +139,43 @@
     let mouseX = e.clientX;
     let mouseY = e.clientY;
 
-    let circleYRatio = 1 - getCirclePosRatios(tempCircle).yRatio;
-    let mouseYRatio = 1 - mouseY / canvas.height;
+    let xDiff = (mouseX - originalMouseX);
+    let yDiff = mouseY - originalMouseY;
 
-    let updateRatio = mapNegate(mouseYRatio / circleYRatio);
-
-    let newCircleRadius = tempCircle.radius + 1 * updateRatio;
-    newCircleRadius = newCircleRadius < 1 ? 1 : newCircleRadius;
+    originalMouseX += xDiff;
+    originalMouseY += yDiff;
 
     canvasCTX.clearRect(0, 0, canvas.width, canvas.height);
-    updateCirclePosition(
-      tempCircle,
-      tempCircle.x,
-      tempCircle.y,
-      newCircleRadius
-    );
 
-    drawCircle(tempCircle, canvasCTX, randomColor());
+    for(let i = 0; i < myModel.outerCircles.length; i++){
+      let currCircle = myModel.outerCircles[i];
+     if(currCircle.rotationAngle + xDiff > 180){
+       currCircle.rotationAngle = Math.abs(180 - (currCircle.rotationAngle + xDiff));
+     }
+     else if(currCircle.rotationAngle + xDiff < 0){
+       currCircle.rotationAngle = 180 + (currCircle.rotationAngle + xDiff);
+     }
+     else{
+       currCircle.rotationAngle += xDiff;
+     }
+     currCircle.changeRotationAngle(currCircle.rotationAngle);
+     if(currCircle.rotationAngle != 0){
+      for(let j = 0; j < currCircle.nodes.length; j++){
+        let currNode = currCircle.nodes[j];
+        if(currNode.angle - yDiff > 360){
+          currNode.angle = Math.abs(360 - (currNode.angle - yDiff));
+        }
+        else if(currNode.angle - yDiff < 0){
+          currNode.angle = 360 - Math.abs(currNode.angle - yDiff);
+        }
+        else{
+          currNode.angle -= yDiff;
+        }
+      }
+     }
+     
+     currCircle.drawNodes();
+    }
   }
 
   function mapNegate(num) {
@@ -159,23 +217,35 @@
   }
 
   function dimensionChange() {
-    let prevRatios = getCirclePosRatios(tempCircle);
-    canvas.height = innerHeight;
+    for(let i = 0; i < myModel.outerCircles.length; i++){
+      for(let j = 0; j < myModel.outerCircles[i].nodes.length; j++){
+        let prevRatios = getCirclePosRatios(myModel.outerCircles[i].nodes[j]);
+        updateCirclePosition(myModel.outerCircles[i].nodes[j],prevRatios.xRatio * innerWidth, prevRatios.yRatio * innerHeight, myModel.outerCircles[i].nodes[j].radius)
+      }
+    }
     canvas.width = innerWidth;
-    updateCirclePosition(
-      tempCircle,
-      prevRatios.xRatio * canvas.width,
-      prevRatios.yRatio * canvas.height,
-      tempCircle.radius
-    );
-    drawCircle(tempCircle, canvasCTX);
+    canvas.height = innerHeight;
+
+    clearCanvas(canvasCTX);
+    for(let i = 0; i < myModel.outerCircles.length; i++){
+      for(let j = 0; j < myModel.outerCircles[i].nodes.length; j++){
+        drawCircle(myModel.outerCircles[i].nodes[j], canvasCTX, myModel.outerCircles[i].color);
+      }
+      //myModel.outerCircles[i].drawLines();
+    }
+  
+    console.log(myModel);
   }
 
   function getY(deg, hyp, rotationAngle){
-    return hyp * Math.sin(convertDegToRad(deg)).toFixed(3) - (skewVal * (rotationAngle / 180));
+    
+    return hyp * Math.sin(convertDegToRad(deg)).toFixed(3);
   }
 
   function getX(deg, hyp, rotationAngle){
+    if(rotationAngle > 90){
+      deg -= 180;
+    }
     let z = Math.cos(convertDegToRad(rotationAngle))
     return (hyp * Math.cos(convertDegToRad(deg)).toFixed(3)) * (Math.abs(90-rotationAngle) / 90);
   }
